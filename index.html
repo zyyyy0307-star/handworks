@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HandWorks - New Year Special</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- MediaPipe Dependencies (Stable JSDelivr CDNs) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #020202; overflow: hidden; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        canvas { display: block; }
+        
+        /* UI Layering */
+        #output_canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        #ui-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        
+        /* Mirror the preview canvas for natural interaction */
+        #preview-canvas { transform: scaleX(-1); border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: #000; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
+        
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+            50% { opacity: 1; box-shadow: 0 0 30px rgba(255,255,255,0.4); }
+        }
+        .btn-pulse { animation: pulse 2s infinite; }
+        
+        .glass-panel {
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@mediapipe/hands": "https://esm.sh/@mediapipe/hands@^0.4.1675469240",
+    "@mediapipe/camera_utils": "https://esm.sh/@mediapipe/camera_utils@^0.3.1675466862",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body>
+
+    <!-- Main Canvas -->
+    <canvas id="output_canvas"></canvas>
+
+    <!-- Hidden Video Source -->
+    <video id="input_video" class="hidden" playsinline style="display:none"></video>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer" class="flex flex-col justify-between p-4">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-start pointer-events-auto">
+             <div class="glass-panel p-4 rounded-xl text-white shadow-2xl border-l-4 border-l-pink-500">
+                <h1 class="text-3xl font-black italic bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent">HandWorks</h1>
+                <p class="text-[10px] text-zinc-400 mt-1 tracking-[0.2em] uppercase font-bold">Celebration Engine</p>
+             </div>
+             
+             <!-- Status Pill -->
+             <div id="status-pill" class="glass-panel text-white/70 px-4 py-2 rounded-full text-xs font-mono transition-colors duration-300">
+                SYSTEM IDLE
+             </div>
+        </div>
+
+        <!-- Center Start Screen -->
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-black/95 z-50 pointer-events-auto transition-opacity duration-700">
+            <h2 class="text-7xl font-black text-white mb-8 tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-zinc-700 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">IGNITE</h2>
+            
+            <div class="flex flex-col items-center gap-6">
+                <button id="start-btn" class="btn-pulse px-12 py-5 bg-white text-black font-bold rounded-full hover:bg-zinc-200 transition-transform transform hover:scale-105 uppercase tracking-widest text-sm shadow-2xl border-4 border-transparent hover:border-pink-500">
+                    Start Experience
+                </button>
+                
+                <div id="loading-indicator" class="hidden flex flex-col items-center gap-3">
+                    <div class="w-10 h-10 border-4 border-t-pink-500 border-white/10 rounded-full animate-spin"></div>
+                    <p class="text-pink-400 text-xs font-mono tracking-widest">CALIBRATING OPTICS...</p>
+                </div>
+            </div>
+            
+            <!-- Instructions Grid -->
+            <div class="mt-24 grid grid-cols-2 gap-20 text-white/80">
+                <div class="text-center group cursor-help">
+                    <div class="text-5xl mb-4 transition-transform group-hover:-translate-y-2 drop-shadow-lg">🖐️</div>
+                    <h3 class="font-bold text-green-400 font-mono tracking-wider border-b border-green-500/30 pb-1 mb-1 inline-block">OPEN PALM</h3>
+                    <p class="text-[10px] text-white/50 uppercase">Launch Shell</p>
+                </div>
+                <div class="text-center group cursor-help">
+                    <div class="text-5xl mb-4 transition-transform group-hover:-translate-y-2 drop-shadow-lg">✊</div>
+                    <h3 class="font-bold text-red-400 font-mono tracking-wider border-b border-red-500/30 pb-1 mb-1 inline-block">CLOSED FIST</h3>
+                    <p class="text-[10px] text-white/50 uppercase">Clear Sky</p>
+                </div>
+            </div>
+            
+            <div class="absolute bottom-8 text-white/20 text-[10px] font-mono tracking-widest uppercase">
+                Interactive Canvas Experiment • 60 FPS
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex justify-between items-end pointer-events-auto">
+            <!-- Preview -->
+            <div class="relative group">
+                <div class="w-52 h-40 bg-black rounded-lg overflow-hidden border border-white/20 shadow-2xl transition-all duration-300 group-hover:scale-105 group-hover:border-pink-500/50 origin-bottom-left">
+                    <canvas id="preview-canvas" class="w-full h-full object-cover"></canvas>
+                    <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2">
+                        <p class="text-[9px] text-green-400 font-mono flex items-center gap-2 uppercase tracking-wide">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                            Sensor Active
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-right text-white/30 text-[10px] font-mono leading-tight">
+                <p>Engine: Canvas 2D + Physics</p>
+                <p>Tracking: MediaPipe Hands</p>
+                <p id="counter-debug" class="text-white/10 mt-1">Shells: 0</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * GLOBAL STATE & CONFIG
+         */
+        const CONFIG = {
+            // Standard Physics (Spiky)
+            gravity: 0.20,
+            friction: 0.92, 
+            trailStrength: 0.12,
+            particleCount: 90,
+            glowStrength: 20
+        };
+
+        const state = {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            gesture: 'UNKNOWN',
+            handPos: { x: 0, y: 0 },
+            lastGesture: 'UNKNOWN',
+            lastExplosionTime: 0,
+            fireworkCount: 0 // Track number of explosions
+        };
+
+        const surpriseState = {
+            active: false,
+            triggerTime: 0,
+            textAlpha: 0,
+            yPos: 0
+        };
+
+        // DOM Elements
+        const videoElement = document.getElementById('input_video');
+        const canvas = document.getElementById('output_canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const previewCanvas = document.getElementById('preview-canvas');
+        const previewCtx = previewCanvas.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const startScreen = document.getElementById('start-screen');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const statusPill = document.getElementById('status-pill');
+        const counterDebug = document.getElementById('counter-debug');
+
+        // Assets
+        let particles = [];
+        let stars = [];
+        let audioCtx = null;
+
+        /**
+         * AUDIO SYSTEM
+         */
+        function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+
+        function playExplosionSound() {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            
+            const bufferSize = audioCtx.sampleRate * 2; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1200, t);
+            filter.frequency.exponentialRampToValueAtTime(40, t + 0.5); 
+            
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.8, t + 0.02); 
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2); 
+            
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            noise.start(t);
+            noise.stop(t + 2);
+        }
+
+        /**
+         * VISUALS SYSTEM
+         */
+        function getRandomColor() {
+            const hue = Math.floor(Math.random() * 360);
+            return `hsl(${hue}, 100%, 60%)`;
+        }
+
+        class Star {
+            constructor() {
+                this.x = Math.random() * state.width;
+                this.y = Math.random() * state.height;
+                this.size = Math.random() * 1.5;
+                this.baseAlpha = Math.random() * 0.5 + 0.1;
+                this.twinkleSpeed = Math.random() * 0.03 + 0.005;
+                this.timer = Math.random() * Math.PI * 2;
+            }
+            draw() {
+                this.timer += this.twinkleSpeed;
+                const alpha = this.baseAlpha + Math.sin(this.timer) * 0.1;
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, alpha)})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color, isHeart = false) {
+                this.x = x;
+                this.y = y;
+                this.prevX = x; 
+                this.prevY = y;
+                this.color = color;
+                this.isHeart = isHeart;
+                
+                if (this.isHeart) {
+                    // Heart particles drift gently, holding shape
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 0.5; // Very slow drift
+                    this.vx = Math.cos(angle) * speed;
+                    this.vy = Math.sin(angle) * speed;
+                    this.alpha = 1;
+                    this.decay = Math.random() * 0.005 + 0.002; // Long life
+                    this.size = Math.random() * 2 + 1.5;
+                } else {
+                    // Standard spiky physics
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 18 + 5; 
+                    this.vx = Math.cos(angle) * speed;
+                    this.vy = Math.sin(angle) * speed;
+                    this.alpha = 1;
+                    this.decay = Math.random() * 0.015 + 0.008;
+                    this.size = Math.random() * 2 + 0.5;
+                }
+            }
+            
+            update() {
+                this.prevX = this.x;
+                this.prevY = this.y;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                if (this.isHeart) {
+                    this.vx *= 0.98; // Low friction
+                    this.vy *= 0.98;
+                    this.vy += 0.02; // Very low gravity (float)
+                } else {
+                    this.vx *= CONFIG.friction; // High drag
+                    this.vy *= CONFIG.friction;
+                    this.vy += CONFIG.gravity;
+                }
+                
+                this.alpha -= this.decay;
+            }
+            
+            draw() {
+                const alpha = Math.max(0, this.alpha);
+                
+                // PASS 1: Glow & Streak
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.shadowBlur = this.isHeart ? 30 : CONFIG.glowStrength;
+                ctx.shadowColor = this.color;
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.size;
+                ctx.lineCap = 'round';
+                
+                ctx.beginPath();
+                ctx.moveTo(this.prevX, this.prevY);
+                ctx.lineTo(this.x, this.y);
+                ctx.stroke();
+                ctx.restore();
+
+                // PASS 2: Hot Core
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.shadowBlur = 4; 
+                ctx.shadowColor = '#FFFFFF';
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function initStars() {
+            stars = [];
+            for(let i=0; i<300; i++) stars.push(new Star());
+        }
+
+        // Standard Spiky Explosion
+        function createStandardExplosion(x, y) {
+            const explosionColor = getRandomColor();
+            const count = CONFIG.particleCount + Math.floor(Math.random() * 20);
+            
+            for(let i=0; i<count; i++) {
+                particles.push(new Particle(x, y, explosionColor, false));
+            }
+        }
+
+        // Heart Shape Explosion
+        function createHeartExplosion(cx, cy) {
+            const color = '#FF1493'; // Deep Pink
+            const scale = 12; // Size of heart
+            
+            // Loop t from 0 to 2PI to create heart outline
+            // Using slightly more particles for density
+            for (let t = 0; t < Math.PI * 2; t += 0.05) {
+                // Heart Formula
+                // x = 16sin^3(t)
+                // y = 13cos(t) - 5cos(2t) - 2cos(3t) - cos(4t)
+                const hx = 16 * Math.pow(Math.sin(t), 3);
+                const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                
+                // Apply scale and offset
+                // Note: Canvas Y is inverted relative to standard cartesian, so -hy flips it upright
+                const px = cx + hx * scale;
+                const py = cy - hy * scale;
+                
+                particles.push(new Particle(px, py, color, true));
+            }
+            
+            // Trigger Surprise Text Logic
+            surpriseState.active = true;
+            surpriseState.triggerTime = Date.now();
+            surpriseState.textAlpha = 0;
+            // "100px below the center of the heart"
+            surpriseState.yPos = cy + 120; // 100 + 20 padding
+        }
+
+        /**
+         * HAND TRACKING UTILS
+         */
+        function detectGesture(landmarks) {
+            if(!landmarks) return 'UNKNOWN';
+            
+            const wrist = landmarks[0];
+            const middleMCP = landmarks[9];
+            const handSize = Math.hypot(wrist.x - middleMCP.x, wrist.y - middleMCP.y);
+            
+            const tips = [8, 12, 16, 20];
+            let extended = 0;
+            
+            tips.forEach(idx => {
+                const tip = landmarks[idx];
+                const dist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+                if(dist > handSize * 1.1) extended++;
+            });
+            
+            const thumbTip = landmarks[4];
+            const indexMCP = landmarks[5];
+            const thumbDist = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            if(thumbDist > handSize * 0.5) extended++;
+
+            if(extended >= 4) return 'OPEN';
+            if(extended <= 1) return 'CLOSED';
+            return 'NEUTRAL';
+        }
+
+        /**
+         * MAIN LOOP
+         */
+        function onResults(results) {
+            // Draw Preview (Mirrored)
+            previewCanvas.width = 320;
+            previewCanvas.height = 240;
+            previewCtx.clearRect(0, 0, 320, 240);
+            previewCtx.drawImage(results.image, 0, 0, 320, 240);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const gesture = detectGesture(landmarks);
+                const palm = landmarks[9];
+                
+                state.gesture = gesture;
+                state.handPos.x = (1 - palm.x) * state.width;
+                state.handPos.y = palm.y * state.height;
+                
+                // Status UI
+                if(gesture === 'OPEN') {
+                    statusPill.innerHTML = '<span class="text-green-400">●</span> LAUNCH READY';
+                    statusPill.className = "glass-panel px-4 py-2 rounded-full text-xs font-mono border-green-500/50 text-green-200 border shadow-[0_0_15px_rgba(74,222,128,0.2)]";
+                } else if(gesture === 'CLOSED') {
+                    statusPill.innerHTML = '<span class="text-red-400">●</span> CLEARING';
+                    statusPill.className = "glass-panel px-4 py-2 rounded-full text-xs font-mono border-red-500/50 text-red-200 border shadow-[0_0_15px_rgba(248,113,113,0.2)]";
+                } else {
+                    statusPill.innerHTML = 'TRACKING';
+                    statusPill.className = "glass-panel px-4 py-2 rounded-full text-xs font-mono text-white/70";
+                }
+            } else {
+                state.gesture = 'UNKNOWN';
+                statusPill.innerHTML = 'SEARCHING...';
+                statusPill.className = "glass-panel px-4 py-2 rounded-full text-xs font-mono text-white/50";
+            }
+        }
+
+        function animate() {
+            // 1. Motion Blur / Trails
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.trailStrength})`;
+            ctx.fillRect(0, 0, state.width, state.height);
+            
+            // 2. Stars
+            stars.forEach(s => s.draw());
+            
+            // 3. Logic & Trigger
+            const now = Date.now();
+            
+            // Open Hand Logic
+            if(state.gesture === 'OPEN' && state.lastGesture !== 'OPEN') {
+                if(now - state.lastExplosionTime > 250) { // Debounce
+                    state.fireworkCount++;
+                    counterDebug.innerText = `Shells: ${state.fireworkCount}`;
+                    playExplosionSound();
+                    
+                    // SURPRISE LOGIC: 21st Firework
+                    if (state.fireworkCount === 21) {
+                        createHeartExplosion(state.handPos.x, state.handPos.y);
+                    } else {
+                        createStandardExplosion(state.handPos.x, state.handPos.y);
+                    }
+                    
+                    state.lastExplosionTime = now;
+                }
+            }
+            
+            // Fist Logic (Clear)
+            if(state.gesture === 'CLOSED') {
+                particles.forEach(p => {
+                    p.alpha -= 0.15; // Fast fade
+                });
+                // Reset Surprise Text
+                surpriseState.active = false;
+                surpriseState.textAlpha = 0;
+            }
+            
+            state.lastGesture = state.gesture;
+            
+            // 4. Draw Particles
+            ctx.globalCompositeOperation = 'lighter';
+            
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                
+                if(p.alpha <= 0.01 || p.y > state.height + 100) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // 5. Draw Surprise Text
+            if (surpriseState.active) {
+                // Wait 500ms before fading in
+                if (now - surpriseState.triggerTime > 500) {
+                    // Fade in over ~2000ms
+                    if (surpriseState.textAlpha < 1) {
+                        surpriseState.textAlpha += 0.01;
+                    }
+                }
+
+                if (surpriseState.textAlpha > 0) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.globalAlpha = surpriseState.textAlpha;
+                    
+                    ctx.font = '900 48px "Verdana", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    // Glow for text
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = '#FF1493';
+                    ctx.fillStyle = '#FFFFFF';
+                    
+                    // Draw Text centered horizontally, y defined by heart pos
+                    // state.width / 2 ensures it's centered on screen as requested (or relative to heart?)
+                    // Prompt: "Centered horizontally, approximately 100px below the center of the heart"
+                    // Interpretation: X = Screen Center, Y = Heart Y + 100? Or X = Heart Center?
+                    // "Centered horizontally" usually implies visual balance on screen.
+                    // But if the heart is on the far left, centering text on screen looks disconnected.
+                    // I will center the text horizontally relative to the *Screen* (standard definition) 
+                    // but I'll use the Heart's Y position.
+                    ctx.fillText("HAPPY NEW YEAR 2026", state.width / 2, surpriseState.yPos);
+                    
+                    ctx.restore();
+                }
+            }
+            
+            // 6. Draw Cursor
+            ctx.globalCompositeOperation = 'source-over';
+            if(state.gesture !== 'UNKNOWN') {
+                ctx.beginPath();
+                ctx.arc(state.handPos.x, state.handPos.y, 20, 0, Math.PI*2);
+                ctx.strokeStyle = state.gesture === 'OPEN' ? '#4ade80' : (state.gesture === 'CLOSED' ? '#f87171' : '#ffffff');
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Crosshair
+                ctx.beginPath();
+                ctx.moveTo(state.handPos.x - 5, state.handPos.y);
+                ctx.lineTo(state.handPos.x + 5, state.handPos.y);
+                ctx.moveTo(state.handPos.x, state.handPos.y - 5);
+                ctx.lineTo(state.handPos.x, state.handPos.y + 5);
+                ctx.stroke();
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        /**
+         * INITIALIZATION
+         */
+        async function startApp() {
+            startBtn.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+            loadingIndicator.classList.add('flex');
+            
+            initAudio();
+            
+            state.width = window.innerWidth;
+            state.height = window.innerHeight;
+            canvas.width = state.width;
+            canvas.height = state.height;
+            initStars();
+
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onResults);
+            
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            
+            try {
+                await camera.start();
+                startScreen.classList.add('opacity-0');
+                setTimeout(() => startScreen.style.display = 'none', 700);
+                animate();
+            } catch (error) {
+                console.error(error);
+                loadingIndicator.innerHTML = `<p class="text-red-500 font-bold">CAMERA ERROR</p><p class="text-xs text-red-400">${error.message}</p>`;
+            }
+        }
+
+        startBtn.addEventListener('click', startApp);
+        window.addEventListener('resize', () => {
+            state.width = window.innerWidth;
+            state.height = window.innerHeight;
+            canvas.width = state.width;
+            canvas.height = state.height;
+            initStars();
+        });
+
+    </script>
+</body>
+</html>

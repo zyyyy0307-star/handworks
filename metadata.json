@@ -1,0 +1,7 @@
+{
+  "name": "HandWorks - Gesture Fireworks copy",
+  "description": "Control a dazzling firework display using hand gestures. Open your hand to launch, close it to clear.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
